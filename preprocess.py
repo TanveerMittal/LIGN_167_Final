@@ -4,7 +4,7 @@ import torch
 import pickle
 from utils import *
 
-split = lambda x: re.findall(r"[\w']+|[.,!?;]", x.lower()) if x is not None else None
+split = lambda x: re.findall(r"[\w']+|[.,!?;]", x.lower())
 def json_to_dct(raw):
     qas = []
     for i in range(len(raw["data"])):
@@ -13,7 +13,7 @@ def json_to_dct(raw):
                 qa = raw["data"][i]["paragraphs"][j]["qas"][k]
                 question = qa["question"]
                 if(qa["is_impossible"]):
-                    answer = None
+                    answer = ""
                 else:
                     answer = qa["answers"][0]["text"]
 
@@ -38,8 +38,11 @@ def refactor_embeddings(words_to_index, index_to_words, word_to_vec_map):
         index_to_words[index] = word
         words_to_index[word] = index
 
-    # TODO unkown token
-    unk = ...
+    # Unknown token embedding representation
+    unk = torch.zeros((dim, 1))
+    for emb in word_to_vec_map.values():
+        unk = torch.add(unk, emb)
+    unk = unk / len(word_to_vec_map)
     vocab_append("<unk>", unk, index=0)
 
     # Seed numpy for random embedding generation

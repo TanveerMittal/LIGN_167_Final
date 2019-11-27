@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+from livelossplot import PlotLosses
+import random
 
 def one_hot(index, size):
     o = np.zeros((size, 1))
@@ -88,7 +90,7 @@ def lstm_encoder_step(xt, h_prev, c_prev, parameters):
 
     return h_next, c_next
 
-def lstm_encode(qac, parameters, word_to_vec_map):
+def lstm_encode(qac, word_to_vec_map, parameters):
     """
     Computes the forward propogation process of the LSTM cell to encode a question and its context
 
@@ -132,9 +134,10 @@ def lstm_encode(qac, parameters, word_to_vec_map):
         # LSTM computation
         h, c = lstm_encoder_step(emb, h, c, parameters)
 
-    return h
+    return (h, c)
 
-def lstm_decoder_init(n_h, n_x, n_y):
+# TODO change dimensions in docstring
+def lstm_decoder_init(n_h, n_y):
     '''
     Arguements:
     n_h: the hidden state dimension
@@ -153,13 +156,13 @@ def lstm_decoder_init(n_h, n_x, n_y):
         Wy: Weight matrix relating the hidden-state to the output, numpy array of shape (n_y, n_h)
         by: Bias relating the hidden-state to the output, numpy array of shape (n_y, 1)
     '''
-    Wf = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
+    Wf = torch.rand((n_h, n_h + n_y), dtype=torch.float32, requires_grad=True)
     bf = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wu = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
+    Wu = torch.rand((n_h, n_h + n_y), dtype=torch.float32, requires_grad=True)
     bu = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wc = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
+    Wc = torch.rand((n_h, n_h + n_y), dtype=torch.float32, requires_grad=True)
     bc = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wo = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
+    Wo = torch.rand((n_h, n_h + n_y), dtype=torch.float32, requires_grad=True)
     bo = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
     Wy = torch.rand((n_y, n_h), dtype=torch.float32, requires_grad=True)
     by = torch.rand((n_y, 1), dtype=torch.float32, requires_grad=True)
@@ -224,11 +227,11 @@ def lstm_decoder_step(y_prev, h_prev, c_prev,  parameters):
     h_next = torch.mul(output, torch.tanh(c_next))
 
     # Compute softmax probability distribution
-    y_t = torch.softmax(torch.matmul(Wy, h_next) + by)
+    y_t = torch.softmax(torch.matmul(Wy, h_next) + by, dim=0)
 
     return h_next, c_next, y_t
 
-def lstm_decode(qac, encoding, parameters, word_to_vec_map):
+def lstm_decode(qac, encoding, words_to_index, parameters):
     """
     Computes the forward propogation process of the LSTM cell to decode an answer from an encoding
 
@@ -251,29 +254,31 @@ def lstm_decode(qac, encoding, parameters, word_to_vec_map):
         by: Bias relating the hidden-state to the output, numpy array of shape (n_y, 1)
 
     Returns:
-    y: list of softmax probability outputs from each timestep
+    y_preds: list of softmax probability outputs from each timestep
     """
 
     #TODO Double check cell state initialization
-    h = encoding
-    c = torch.rand(h.shape, dtype=torch.float32, requires_grad=False)
-    y = []
+    h, c = encoding
+    y_hat = []
     y_t = one_hot(words_to_index["<start>"], len(words_to_index))
 
 
     # Compute LSTM output  sequence until the answer length has been reached
-    while len(y) < len(qac["answer"]) + 1:
+    while len(y_hat) < len(qac["answer"]) + 1:
         # LSTM computation
         h, c, y_t = lstm_decoder_step(y_t, h, c, parameters)
-        y.append(y_t)
+        y_hat.append(y_t)
 
-    return y
+    # Combine list of tensors into single tensor
+    y_hat = torch.cat(y_hat, 1)
+
+    return y_hat
 
 
 
-def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_to_index, path, learning_rate=0.01, epochs=3):
+def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_to_index, name, learning_rate=0.01, batch_size=64, epochs=3):
     # Categorical crossentropy loss function
-    single_categorical_crossentropy = lambda y, y_hat: -torch.sum(torch.mul(y, torch.log(y_hat)))
+    categorical_crossentropy = lambda y, y_hat: -torch.sum(torch.mul(y, torch.log(y_hat)))/y.shape[1]
 
     # List to store loss at each training step
     losses = []
@@ -281,34 +286,71 @@ def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_
     # Define the adam optimizer to be used on the encoder and decoder parameters
     optimizer = torch.optim.Adam(list(encoder_params.values()) + list(decoder_params.values()), lr=learning_rate)
 
+    # Initialize logging
+    log = open("modeling/logs/%s.txt" % name, "a+")
+
     for i in range(epochs):
         print("Starting epoch #%d" % (i+1))
-        for qac in training_data:
+        random.shuffle(training_data)
+        for index, qac in enumerate(training_data):
             # Retrieve one_hot representation of answer
-            y = torch.tensor([one_hot(words_to_index[word], len(words_to_index)) for word in qac["answer"]], dtype=torch.float32)
+            y = []
+            for word in qac["answer"] + ["<end>"]:
+                if not word in words_to_index:
+                    word = "<unk>"
+                y.append(one_hot(words_to_index[word], len(words_to_index)))
+            y = torch.cat(y, 1)
 
             # Create encoding of query and context
-            encoding = lstm_encode(qac, encoder_params)
+            encoding = lstm_encode(qac, word_to_vec_map, encoder_params)
 
             # Decode the encoding into probability distributions
-            y_hat = lstm_decode(qac, encoding, decoder_params)
+            y_hat = lstm_decode(qac, encoding, words_to_index, decoder_params)
 
             # Compute categorical crossentropy loss
-            loss = single_categorical_crossentropy(y, y_hat)
+            loss = categorical_crossentropy(y, y_hat)
 
-            # Gradient descent
-            loss.backward()
-
-            # Parameter update
-            optimizer.step()
+            # Print current training step
+            print("Example #%d, Loss: %f" % (index + 1, loss.item()), end="\r")
 
             # Record the loss value
             losses.append(loss)
 
-    # TODO write losses to file
-    f = open(path, "a+")
-    for l in losses:
-        f.write(str(l) + "\n")
-    f.close()
+            # After every batch save the parametes and log
+            if (index + 1) % batch_size == 0:
+                # pickle.dump((encoder_params, decoder_params), path + ".pkl")
+
+                # Average loss for batch
+                cost = torch.sum(torch.stack(losses, dim=0))/len(losses)
+
+                # Print the cost
+                print("Batch %d/%d, Cost: %f" % (((index + 1) // batch_size), (len(training_data) // batch_size) + 1, cost))
+
+                # Write average loss to logs
+                log.write(str(cost) + "\n")
+
+                # Reset list of losses
+                losses = []
+
+                # Gradient descent
+                cost.backward()
+
+                # Parameter update
+                optimizer.step()
+
+        # Average loss for last batch
+        cost = torch.sum(torch.stack(losses, dim=0))/len(losses)
+
+        # Write average loss to logs
+        log.write(str(cost) + "\n")
+
+        # Gradient descent
+        cost.backward()
+
+        # Parameter update
+        optimizer.step()
+
+    # Close log file
+    log.close()
 
     return encoder_params, decoder_params
