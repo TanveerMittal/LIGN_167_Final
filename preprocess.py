@@ -4,8 +4,21 @@ import torch
 import pickle
 from utils import *
 
-split = lambda x: re.findall(r"[\w']+|[.,!?;]", x.lower())
-def json_to_dct(raw):
+split = lambda x: re.findall(r"[\w']+|[.,!?;]", x.lower()) if x is not None else []
+def json_to_dctv1(raw):
+    qas = []
+    for i in range(len(raw["data"])):
+        for j in range(len(raw["data"][i]["paragraphs"])):
+            for k in range(len(raw["data"][i]["paragraphs"][j]["qas"])):
+                qa = raw["data"][i]["paragraphs"][j]["qas"][k]
+                question = qa["question"]
+                answer = qa["answers"][0]["text"]
+                qas.append({"question": split(question),
+                            "answer": split(answer),
+                            "context": split(raw["data"][i]["paragraphs"][j]['context'])})
+    return qas
+
+def json_to_dctv2(raw):
     qas = []
     for i in range(len(raw["data"])):
         for j in range(len(raw["data"][i]["paragraphs"])):
@@ -13,7 +26,7 @@ def json_to_dct(raw):
                 qa = raw["data"][i]["paragraphs"][j]["qas"][k]
                 question = qa["question"]
                 if(qa["is_impossible"]):
-                    answer = ""
+                    continue
                 else:
                     answer = qa["answers"][0]["text"]
 
@@ -23,8 +36,8 @@ def json_to_dct(raw):
                             "context": split(raw["data"][i]["paragraphs"][j]['context'])})
     return qas
 
-pickle.dump(json_to_dct(json.load(open("data/train.json"))), open("data/train.pkl", "wb"))
-pickle.dump(json_to_dct(json.load(open("data/validation.json"))), open("data/validation.pkl", "wb"))
+pickle.dump(json_to_dctv1(json.load(open("data/train-v1.1.json"))), open("data/train-v1.1.pkl", "wb"))
+pickle.dump(json_to_dctv1(json.load(open("data/dev-v1.1.json"))), open("data/dev-v1.1.pkl", "wb"))
 
 def refactor_embeddings(words_to_index, index_to_words, word_to_vec_map):
     dim = len(word_to_vec_map['a'])
@@ -58,7 +71,7 @@ def refactor_embeddings(words_to_index, index_to_words, word_to_vec_map):
     return words_to_index, index_to_words, word_to_vec_map
 
 
-embeddings = "glove.6B.50d.txt"
+embeddings = "glove.6B.100d.txt"
 words_to_index, index_to_words, word_to_vec_map = read_glove_vecs("embeddings/" + embeddings)
 words_to_index, index_to_words, word_to_vec_map = refactor_embeddings(words_to_index, index_to_words, word_to_vec_map)
 pickle.dump((words_to_index, index_to_words, word_to_vec_map), open("embeddings/%s.pkl" % embeddings[:-4], 'wb'))
