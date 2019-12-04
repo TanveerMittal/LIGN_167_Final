@@ -184,7 +184,15 @@ def rnn_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
 
 def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_to_index, index_to_words, name, learning_rate=0.01, batch_size=64, epochs=3, sample_size=80000):
     # Categorical crossentropy loss function
-    categorical_crossentropy = lambda y, y_hat: -torch.sum(torch.mul(y, torch.log(y_hat)))/y.shape[1]
+    # categorical_crossentropy = lambda y, y_hat: -torch.sum(torch.mul(y, torch.log(y_hat)))/y.shape[1]
+    def categorical_crossentropy(y, y_hat):
+        losses = torch.tensor([-1*torch.log(torch.dot(y_hat[:,i], y[:,i])) for i in range(y.shape[1])], torch.float32)
+        return torch.sum(losses, 0)
+
+    def word_loss(word_probs, word):
+    	#outcome is a one-hot vector
+    	prob_of_word =
+    	return
 
     # List to store loss at each training step
     losses = []
@@ -206,7 +214,7 @@ def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_
                     word = "<unk>"
                 y.append(one_hot(words_to_index[word], len(words_to_index)))
             y = torch.cat(y, 1)
-            
+
             # Create encoding of query and context
             encoding = rnn_encode(qac, word_to_vec_map, encoder_params)
 
