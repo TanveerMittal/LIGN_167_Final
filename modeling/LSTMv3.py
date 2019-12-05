@@ -2,12 +2,10 @@ import torch
 import random
 import pickle
 import numpy as np
+from utils import *
 
-
-def one_hot(index, size):
-    o = np.zeros((size, 1))
-    o[index,:] = 1
-    return torch.from_numpy(o).type(torch.float32)
+# Retrieve torch device
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def lstm_encoder_init(n_h, n_x):
     '''
@@ -376,6 +374,7 @@ def train(training_data, q_encoder_params, c_encoder_params, decoder_params, wor
 
                 # Parameter update
                 optimizer.step()
+
 
                 if ((index + 1) // batch_size) % 25 == 0:
                     print("Saving...", end='\r')

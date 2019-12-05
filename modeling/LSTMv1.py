@@ -2,12 +2,10 @@ import torch
 import random
 import pickle
 import numpy as np
+from utils import *
 
-
-def one_hot(index, size):
-    o = np.zeros((size, 1))
-    o[index,:] = 1
-    return torch.from_numpy(o).type(torch.float32)
+# Retrieve torch device
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def lstm_encoder_init(n_h, n_x):
     '''
@@ -25,14 +23,14 @@ def lstm_encoder_init(n_h, n_x):
         Wo: Weight matrix of the output gate, numpy array of shape (n_h, n_h + n_x)
         bo:  Bias of the output gate, numpy array of shape (n_h, 1)
     '''
-    Wf = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bf = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wu = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bu = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wc = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bc = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wo = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bo = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
+    Wf = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bf = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wu = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bu = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wc = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bc = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wo = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bo = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
     return {"Wf": Wf, "Wu": Wu, "Wo": Wo, "Wc": Wc, "bf": bf, "bu": bu, "bo": bo, "bc": bc}
 
 def lstm_encoder_step(xt, h_prev, c_prev, parameters):
@@ -59,6 +57,7 @@ def lstm_encoder_step(xt, h_prev, c_prev, parameters):
     h_next: next hidden state, of shape (n_h, m)
     c_next: next memory state, of shape (n_h, m)
     '''
+    # Load parameters
     Wf = parameters["Wf"]
     bf = parameters["bf"]
     Wu = parameters["Wu"]
@@ -69,7 +68,7 @@ def lstm_encoder_step(xt, h_prev, c_prev, parameters):
     bo = parameters["bo"]
 
     # Concatenate hidden state and input for matrix mulitplication
-    hx = torch.cat((h_prev, xt), 0)
+    hx = torch.cat((h_prev, xt), 0).to(torch.device(device))
 
     # Compute the first tanh for the memory state using the previous hidden state and input
     ct = torch.tanh(torch.matmul(Wc, hx) + bc)
@@ -120,17 +119,17 @@ def lstm_encode(qac, word_to_vec_map, parameters):
     # Create the sequence to compute on
     sequence = qac["question"] + ["<sep>"] + qac["context"]
 
-    #TODO Double check hidden state initialization
-    h = torch.rand((parameters["Wf"].shape[0], 1), dtype=torch.float32, requires_grad=False)
-    c = torch.rand(h.shape, dtype=torch.float32, requires_grad=False)
+    # Hidden and cell state initialization
+    h = torch.rand((parameters["Wf"].shape[0], 1), dtype=torch.float32, requires_grad=False, device=device)
+    c = torch.rand(h.shape, dtype=torch.float32, requires_grad=False, device=device)
 
     # Compute LSTM output on each word of the sentence
     for word in sequence:
         # Retrieve the embedding for the current word
         if word in word_to_vec_map:
-            emb = word_to_vec_map[word]
+            emb = word_to_vec_map[word].to(torch.device(device))
         else:
-            emb = word_to_vec_map["<unk>"]
+            emb = word_to_vec_map["<unk>"].to(torch.device(device))
 
         # LSTM computation
         h, c = lstm_encoder_step(emb, h, c, parameters)
@@ -157,16 +156,16 @@ def lstm_decoder_init(n_h, n_x, n_y):
         Wy: Weight matrix relating the hidden-state to the output, numpy array of shape (n_y, n_h)
         by: Bias relating the hidden-state to the output, numpy array of shape (n_y, 1)
     '''
-    Wf = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bf = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wu = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bu = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wc = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bc = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wo = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True)
-    bo = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    Wy = torch.rand((n_y, n_h), dtype=torch.float32, requires_grad=True)
-    by = torch.rand((n_y, 1), dtype=torch.float32, requires_grad=True)
+    Wf = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bf = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wu = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bu = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wc = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bc = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wo = torch.rand((n_h, n_h + n_x), dtype=torch.float32, requires_grad=True, device=device)
+    bo = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True, device=device)
+    Wy = torch.rand((n_y, n_h), dtype=torch.float32, requires_grad=True, device=device)
+    by = torch.rand((n_y, 1), dtype=torch.float32, requires_grad=True, device=device)
 
     return {"Wf": Wf, "Wu": Wu, "Wo": Wo, "Wc": Wc, "Wy": Wy,
             "bf": bf, "bu": bu, "bo": bo, "bc": bc, "by": by}
@@ -207,7 +206,7 @@ def lstm_decoder_step(y_prev, h_prev, c_prev,  parameters):
     by = parameters["by"]
 
     # Concatenate hidden state and input for matrix mulitplication
-    hx = torch.cat((h_prev, y_prev), 0)
+    hx = torch.cat((h_prev, y_prev), 0).to(torch.device(device))
 
     # Compute the first tanh for the memory state using the previous hidden state and input
     ct = torch.tanh(torch.matmul(Wc, hx) + bc)
@@ -257,11 +256,10 @@ def lstm_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
     Returns:
     y_preds: list of softmax probability outputs from each timestep
     """
-
-    #TODO Double check cell state initialization
+    # Use encoding as initial hidden and cell state
     h, c = encoding
     y_hat = []
-    y_t = word_to_vec_map["<start>"]
+    y_t = word_to_vec_map["<start>"].to(torch.device(device))
 
 
     # Compute LSTM output  sequence until the answer length has been reached
@@ -271,10 +269,10 @@ def lstm_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
         y_hat.append(y_t)
 
         # Convert softmax output into embedding for the highest probability word
-        y_t = word_to_vec_map[index_to_words[torch.max(y_t, 0)[1][0].item()]]
+        y_t = word_to_vec_map[index_to_words[torch.max(y_t, 0)[1][0].item()]].to(torch.device(device))
 
     # Combine list of tensors into single tensor
-    y_hat = torch.cat(y_hat, 1)
+    y_hat = torch.cat(y_hat, 1).to(torch.device(device))
 
     return y_hat
 
@@ -282,7 +280,13 @@ def lstm_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
 
 def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_to_index, index_to_words, name, learning_rate=0.01, batch_size=64, epochs=3, sample_size=80000):
     # Categorical crossentropy loss function
-    categorical_crossentropy = lambda y, y_hat: -torch.sum(torch.mul(y, torch.log(y_hat)))/y.shape[1]
+    def categorical_crossentropy(y, y_hat):
+        L = torch.tensor(0,dtype=torch.float32, device=device)
+
+        for i in range(y.shape[1]):
+            L += -1*torch.log(torch.dot(y_hat[:,i], y[:,i]))
+
+        return L
 
     # List to store loss at each training step
     losses = []
@@ -295,15 +299,18 @@ def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_
 
     for i in range(epochs):
         print("Starting epoch #%d" % (i+1))
-        sample = random.sample(training_data, sample_size)
-        for index, qac in enumerate(sample):
+        sample = random.sample(range(len(training_data)), sample_size)
+        for index, example in enumerate(sample):
+            # Retrieve training example
+            qac = training_data[example]
+
             # Retrieve one_hot representation of answer
             y = []
             for word in qac["answer"] + ["<end>"]:
                 if not word in words_to_index:
                     word = "<unk>"
                 y.append(one_hot(words_to_index[word], len(words_to_index)))
-            y = torch.cat(y, 1)
+            y = torch.cat(y, 1).to(torch.device(device))
 
             # Create encoding of query and context
             encoding = lstm_encode(qac, word_to_vec_map, encoder_params)
@@ -322,7 +329,6 @@ def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_
 
             # After every batch save the parametes and log
             if (index + 1) % batch_size == 0:
-                # pickle.dump((encoder_params, decoder_params), path + ".pkl")
 
                 # Average loss for batch
                 cost = torch.sum(torch.stack(losses, dim=0))/len(losses)
@@ -345,6 +351,10 @@ def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_
                 # Parameter update
                 optimizer.step()
 
+                # Reset the gradient values
+                optimizer.zero_grad()
+
+                # Every 25 batches we save the model
                 if ((index + 1) // batch_size) % 25 == 0:
                     print("Saving...", end='\r')
                     pickle.dump((encoder_params, decoder_params), open("modeling/saves/%s.pkl" % name, 'wb'))

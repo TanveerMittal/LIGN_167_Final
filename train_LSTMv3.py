@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 from modeling.LSTMv3 import *
 
-training_data = pickle.load(open("data/train-v2.0.pkl", "rb"))
+training_data = pickle.load(open("data/train-v1.1.pkl", "rb"))
 print("%d questions in our training set" % len(training_data))
 
 words_to_index, index_to_words, word_to_vec_map = pickle.load(open("embeddings/glove.6B.50d.pkl", "rb"))

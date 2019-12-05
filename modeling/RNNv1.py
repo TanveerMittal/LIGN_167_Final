@@ -2,12 +2,10 @@ import torch
 import random
 import pickle
 import numpy as np
+from utils import *
 
-
-def one_hot(index, size):
-    o = np.zeros((size, 1))
-    o[index,:] = 1
-    return torch.from_numpy(o).type(torch.float32)
+# Retrieve torch device
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def rnn_encoder_init(n_h, n_x):
     '''
@@ -20,9 +18,9 @@ def rnn_encoder_init(n_h, n_x):
         Wh: Weight matrix that relates the previous hidden state to the current hidden state, tensor of shape (n_h, n_h)
         bh: Bias vector for the hidden statae calculation, tensor of shape (n_h, 1)
     '''
-    Wx = torch.rand((n_h, n_x), dtype=torch.float32, requires_grad=True)
-    Wh = torch.rand((n_h, n_h), dtype=torch.float32, requires_grad=True)
-    bh = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
+    Wx = torch.rand((n_h, n_x), dtype=torch.float32, requires_grad=True, device=device)
+    Wh = torch.rand((n_h, n_h), dtype=torch.float32, requires_grad=True,  device=device)
+    bh = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True,  device=device)
     return {"Wx": Wx, "Wh": Wh, "bh": bh}
 
 def rnn_encoder_step(xt, h_prev, parameters):
@@ -70,15 +68,15 @@ def rnn_encode(qac, word_to_vec_map, parameters):
     sequence = qac["question"] + ["<sep>"] + qac["context"]
 
     #TODO Double check hidden state initialization
-    h = torch.zeros((parameters["Wh"].shape[0], 1), dtype=torch.float32, requires_grad=False)
+    h = torch.zeros((parameters["Wh"].shape[0], 1), dtype=torch.float32, requires_grad=False,  device=device)
 
     # Compute LSTM output on each word of the sentence
     for word in sequence:
         # Retrieve the embedding for the current word
         if word in word_to_vec_map:
-            emb = word_to_vec_map[word]
+            emb = word_to_vec_map[word].to(torch.device(device))
         else:
-            emb = word_to_vec_map["<unk>"]
+            emb = word_to_vec_map["<unk>"].to(torch.device(device))
 
         # LSTM computation
         h = rnn_encoder_step(emb, h, parameters)
@@ -99,11 +97,11 @@ def rnn_decoder_init(n_h, n_x, n_y):
         bh: Bias vector for the hidden state calculation, tensor of shape (n_h, 1)
         by: Bias vector for softmax output calculation, tensor of shape (n_y, 1)
     '''
-    Wx = torch.rand((n_h, n_x), dtype=torch.float32, requires_grad=True)
-    Wh = torch.rand((n_h, n_h), dtype=torch.float32, requires_grad=True)
-    Wy = torch.rand((n_y, n_h), dtype=torch.float32, requires_grad=True)
-    bh = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True)
-    by = torch.rand((n_y, 1), dtype=torch.float32, requires_grad=True)
+    Wx = torch.rand((n_h, n_x), dtype=torch.float32, requires_grad=True,  device=device)
+    Wh = torch.rand((n_h, n_h), dtype=torch.float32, requires_grad=True,  device=device)
+    Wy = torch.rand((n_y, n_h), dtype=torch.float32, requires_grad=True,  device=device)
+    bh = torch.rand((n_h, 1), dtype=torch.float32, requires_grad=True,  device=device)
+    by = torch.rand((n_y, 1), dtype=torch.float32, requires_grad=True,  device=device)
     return {"Wx": Wx, "Wh": Wh, "Wy": Wy, "bh": bh, "by":by}
 
 
@@ -163,7 +161,7 @@ def rnn_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
     #TODO Double check cell state initialization
     h = encoding
     y_hat = []
-    y_t = word_to_vec_map["<start>"]
+    y_t = word_to_vec_map["<start>"].to(torch.device(device))
 
 
     # Compute LSTM output  sequence until the answer length has been reached
@@ -173,10 +171,10 @@ def rnn_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
         y_hat.append(y_t)
 
         # Convert softmax output into embedding for the highest probability word
-        y_t = word_to_vec_map[index_to_words[torch.max(y_t, 0)[1][0].item()]]
+        y_t = word_to_vec_map[index_to_words[torch.max(y_t, 0)[1][0].item()]].to(torch.device(device))
 
     # Combine list of tensors into single tensor
-    y_hat = torch.cat(y_hat, 1)
+    y_hat = torch.cat(y_hat, 1).to(torch.device(device))
 
     return y_hat
 
@@ -184,15 +182,14 @@ def rnn_decode(qac, encoding, word_to_vec_map, index_to_words, parameters):
 
 def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_to_index, index_to_words, name, learning_rate=0.01, batch_size=64, epochs=3, sample_size=80000):
     # Categorical crossentropy loss function
-    # categorical_crossentropy = lambda y, y_hat: -torch.sum(torch.mul(y, torch.log(y_hat)))/y.shape[1]
     def categorical_crossentropy(y, y_hat):
-        losses = torch.tensor([-1*torch.log(torch.dot(y_hat[:,i], y[:,i])) for i in range(y.shape[1])], torch.float32)
-        return torch.sum(losses, 0)
+        L = torch.tensor(0,dtype=torch.float32, device=device)
 
-    def word_loss(word_probs, word):
-    	#outcome is a one-hot vector
-    	prob_of_word =
-    	return
+        for i in range(y.shape[1]):
+            L += -1*torch.log(torch.dot(y_hat[:,i], y[:,i]))
+
+        return L
+
 
     # List to store loss at each training step
     losses = []
@@ -205,15 +202,18 @@ def train(training_data, encoder_params, decoder_params, word_to_vec_map, words_
 
     for i in range(epochs):
         print("Starting epoch #%d" % (i+1))
-        sample = random.sample(training_data, sample_size)
-        for index, qac in enumerate(sample):
+        sample = random.sample(range(len(training_data)), sample_size)
+        for index, example in enumerate(sample):
+            # Retrieve training example
+            qac = training_data[example]
+
             # Retrieve one_hot representation of answer
             y = []
             for word in qac["answer"] + ["<end>"]:
                 if not word in words_to_index:
                     word = "<unk>"
                 y.append(one_hot(words_to_index[word], len(words_to_index)))
-            y = torch.cat(y, 1)
+            y = torch.cat(y, 1).to(torch.device(device))
 
             # Create encoding of query and context
             encoding = rnn_encode(qac, word_to_vec_map, encoder_params)

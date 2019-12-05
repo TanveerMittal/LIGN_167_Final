@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 def read_glove_vecs(glove_file):
     with open(glove_file, 'r', encoding="utf8") as f:
@@ -18,3 +19,9 @@ def read_glove_vecs(glove_file):
             index_to_words[i] = w
             i = i + 1
     return words_to_index, index_to_words, word_to_vec_map
+
+# Function to create one hot tensor
+def one_hot(index, size):
+    o = torch.zeros((size, 1), dtype=torch.float32)
+    o[index,:] = 1
+    return o
