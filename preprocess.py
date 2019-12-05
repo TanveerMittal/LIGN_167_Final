@@ -2,6 +2,7 @@ import re
 import json
 import torch
 import pickle
+import numpy as np
 from utils import *
 
 split = lambda x: re.findall(r"[\w']+|[.,!?;]", x.lower()) if x is not None else []
@@ -36,8 +37,10 @@ def json_to_dctv2(raw):
                             "context": split(raw["data"][i]["paragraphs"][j]['context'])})
     return qas
 
-pickle.dump(json_to_dctv1(json.load(open("data/train-v1.1.json"))), open("data/train-v1.1.pkl", "wb"))
-pickle.dump(json_to_dctv1(json.load(open("data/dev-v1.1.json"))), open("data/dev-v1.1.pkl", "wb"))
+training_data = json_to_dctv1(json.load(open("data/train-v1.1.json")))
+pickle.dump(training_data, open("data/train-v1.1.pkl", "wb"))
+val_data = json_to_dctv1(json.load(open("data/dev-v1.1.json")))
+pickle.dump(val_data, open("data/dev-v1.1.pkl", "wb"))
 
 def torch_embeddings(words_to_index, index_to_words, word_to_vec_map):
     dim = len(word_to_vec_map['a'])
@@ -73,6 +76,29 @@ def torch_embeddings(words_to_index, index_to_words, word_to_vec_map):
 def np_embeddings(words_to_index, index_to_words, word_to_vec_map):
     dim = len(word_to_vec_map['a'])
 
+    vocab =  {word for qac in training_data + val_data for word in qac["question"] + qac["context"] + qac["answer"]}
+    overwrite = 1
+    for idx in range(1, len(index_to_words) + 1):
+        if index_to_words[idx] in vocab:
+            index_to_words[overwrite] = index_to_words[idx]
+            if idx != overwrite:
+                index_to_words.pop(idx)
+            words_to_index[index_to_words[overwrite]] = overwrite
+            overwrite += 1
+        else:
+            word_to_vec_map.pop(index_to_words[idx])
+            words_to_index.pop(index_to_words[idx])
+            index_to_words.pop(idx)
+
+    for qac in training_data + val_data:
+        for word in qac["question"] + qac["context"] + qac["answer"]:
+            vocab.add(word)
+
+    unneeded = []
+    for word in word_to_vec_map:
+        if not word in vocab:
+            unneeded.append(word)
+
     def vocab_append(word, embedding, index=None):
         if index is None:
             index = len(index_to_words)
@@ -80,12 +106,15 @@ def np_embeddings(words_to_index, index_to_words, word_to_vec_map):
         index_to_words[index] = word
         words_to_index[word] = index
 
+    # Padding token
+    vocab_append("<pad>", np.random.rand(dim), index=0)
+
     # Unknown token embedding representation
     unk = np.zeros((dim))
     for emb in word_to_vec_map.values():
         unk += emb
     unk = unk / len(word_to_vec_map)
-    vocab_append("<unk>", unk, index=0)
+    vocab_append("<unk>", unk)
 
     # Seed numpy for random embedding generation
     np.random.seed(50)
@@ -96,8 +125,7 @@ def np_embeddings(words_to_index, index_to_words, word_to_vec_map):
     vocab_append("<start>", np.random.rand(dim))
     # End of answer token
     vocab_append("<end>", np.random.rand(dim))
-    # Padding token
-    vocab_append("<pad>", np.random.rand(dim))
+
 
     return words_to_index, index_to_words, word_to_vec_map
 
