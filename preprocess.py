@@ -37,10 +37,6 @@ def json_to_dctv2(raw):
                             "context": split(raw["data"][i]["paragraphs"][j]['context'])})
     return qas
 
-training_data = json_to_dctv1(json.load(open("data/train-v1.1.json")))
-pickle.dump(training_data, open("data/train-v1.1.pkl", "wb"))
-val_data = json_to_dctv1(json.load(open("data/dev-v1.1.json")))
-pickle.dump(val_data, open("data/dev-v1.1.pkl", "wb"))
 
 def torch_embeddings(words_to_index, index_to_words, word_to_vec_map):
     dim = len(word_to_vec_map['a'])
@@ -129,6 +125,10 @@ def np_embeddings(words_to_index, index_to_words, word_to_vec_map):
 
     return words_to_index, index_to_words, word_to_vec_map
 
+training_data = json_to_dctv1(json.load(open("data/train-v1.1.json")))
+pickle.dump(training_data, open("data/train-v1.1.pkl", "wb"))
+val_data = json_to_dctv1(json.load(open("data/dev-v1.1.json")))
+pickle.dump(val_data, open("data/dev-v1.1.pkl", "wb"))
 
 embeddings = "glove.6B.50d.txt"
 words_to_index, index_to_words, word_to_vec_map = read_glove_vecs("embeddings/" + embeddings)
